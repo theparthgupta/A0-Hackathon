@@ -1,6 +1,7 @@
 import { auth0 } from "@/lib/auth0";
 import { getAIStatus } from "@/lib/ai-engine";
 import Link from "next/link";
+import AgentMonitor from "./agent-monitor";
 
 export default async function DashboardPage() {
   const session = await auth0.getSession();
@@ -21,10 +22,18 @@ export default async function DashboardPage() {
       {/* Status Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatusCard
-          label="Local AI Engine"
+          label="AI Agent Engine"
           value={ollamaUp ? "Online" : "Offline"}
           status={ollamaUp ? "green" : "red"}
-          detail={ai.engine === "openclaw" ? `OpenClaw → Groq (${ai.model ?? "llama-3.3-70b"})` : ai.engine === "groq" ? `Groq — ${ai.model ?? "llama-3.3-70b"}` : ai.engine === "ollama" ? `Ollama — ${ai.model ?? "llama3.2:1b"}` : "No engine detected"}
+          detail={
+            ai.engine === "openclaw"
+              ? `OpenClaw → Groq (${ai.model ?? "llama-3.3-70b"})`
+              : ai.engine === "groq"
+              ? `Groq — ${ai.model ?? "llama-3.3-70b"}`
+              : ai.engine === "ollama"
+              ? `Ollama — ${ai.model ?? "llama3.2:1b"}`
+              : "No engine detected"
+          }
         />
         <StatusCard
           label="Auth Layer"
@@ -33,10 +42,10 @@ export default async function DashboardPage() {
           detail="Auth0 Token Vault"
         />
         <StatusCard
-          label="Data Isolation"
-          value="Enforced"
+          label="Agent Mode"
+          value="Autonomous"
           status="green"
-          detail="Raw data never leaves server"
+          detail="Tool-use + multi-step reasoning"
         />
         <StatusCard
           label="Audit Logging"
@@ -46,50 +55,100 @@ export default async function DashboardPage() {
         />
       </div>
 
+      {/* Agent Monitor */}
+      <AgentMonitor />
+
       {/* Architecture Flow */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-        <h2 className="font-semibold text-white">Security Architecture</h2>
+        <h2 className="font-semibold text-white">Agent Architecture</h2>
         <div className="flex items-center gap-2 text-sm flex-wrap">
           {[
-            { label: "User Login", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+            {
+              label: "User Query",
+              color: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "Auth0 Token Vault", color: "bg-purple-500/20 text-purple-300 border-purple-500/30" },
+            {
+              label: "Agent Planner (LLM)",
+              color:
+                "bg-purple-500/20 text-purple-300 border-purple-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "Scoped Token", color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
+            {
+              label: "Tool Selection",
+              color:
+                "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "Stripe/PayPal API", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
+            {
+              label: "Token Vault → Stripe/PayPal",
+              color:
+                "bg-orange-500/20 text-orange-300 border-orange-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "Sanitizer", color: "bg-red-500/20 text-red-300 border-red-500/30" },
+            {
+              label: "Sanitize + Analyze",
+              color: "bg-red-500/20 text-red-300 border-red-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "OpenClaw → Groq", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+            {
+              label: "Adapt & Repeat",
+              color:
+                "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+            },
             { label: "→", color: "text-slate-500" },
-            { label: "Insights Only", color: "bg-green-500/20 text-green-300 border-green-500/30" },
+            {
+              label: "Final Report",
+              color:
+                "bg-green-500/20 text-green-300 border-green-500/30",
+            },
           ].map((step, i) =>
             step.color === "text-slate-500" ? (
-              <span key={i} className="text-slate-500 font-bold">{step.label}</span>
+              <span key={i} className="text-slate-500 font-bold">
+                {step.label}
+              </span>
             ) : (
-              <span key={i} className={`px-2 py-1 rounded border text-xs font-medium ${step.color}`}>
+              <span
+                key={i}
+                className={`px-2 py-1 rounded border text-xs font-medium ${step.color}`}
+              >
                 {step.label}
               </span>
             )
           )}
         </div>
         <p className="text-xs text-slate-500">
-          Raw financial data is fetched and processed entirely server-side. Only statistical insights and risk classifications reach the browser.
+          The agent autonomously decides which tools to call, adapts its
+          investigation based on intermediate results, and produces a final risk
+          assessment. Raw financial data never leaves the server.
         </p>
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-4">
-        <Link href="/dashboard/analyze" className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl p-6 transition-colors group">
-          <div className="text-2xl mb-2">🔍</div>
-          <div className="font-semibold text-white group-hover:text-emerald-400 transition-colors">Run Analysis</div>
-          <div className="text-slate-400 text-sm mt-1">Detect anomalies across your financial accounts</div>
+        <Link
+          href="/dashboard/analyze"
+          className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl p-6 transition-colors group"
+        >
+          <div className="text-2xl mb-2">🤖</div>
+          <div className="font-semibold text-white group-hover:text-emerald-400 transition-colors">
+            Launch Agent Analysis
+          </div>
+          <div className="text-slate-400 text-sm mt-1">
+            Agent plans, investigates, and reports autonomously
+          </div>
         </Link>
-        <Link href="/dashboard/permissions" className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl p-6 transition-colors group">
+        <Link
+          href="/dashboard/permissions"
+          className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl p-6 transition-colors group"
+        >
           <div className="text-2xl mb-2">🔐</div>
-          <div className="font-semibold text-white group-hover:text-emerald-400 transition-colors">Manage Permissions</div>
-          <div className="text-slate-400 text-sm mt-1">View and revoke connected account access</div>
+          <div className="font-semibold text-white group-hover:text-emerald-400 transition-colors">
+            Manage Permissions
+          </div>
+          <div className="text-slate-400 text-sm mt-1">
+            View and revoke connected account access
+          </div>
         </Link>
       </div>
     </div>
@@ -107,8 +166,18 @@ function StatusCard({
   status: "green" | "red" | "yellow";
   detail: string;
 }) {
-  const dot = status === "green" ? "bg-emerald-400" : status === "red" ? "bg-red-400" : "bg-yellow-400";
-  const text = status === "green" ? "text-emerald-400" : status === "red" ? "text-red-400" : "text-yellow-400";
+  const dot =
+    status === "green"
+      ? "bg-emerald-400"
+      : status === "red"
+      ? "bg-red-400"
+      : "bg-yellow-400";
+  const text =
+    status === "green"
+      ? "text-emerald-400"
+      : status === "red"
+      ? "text-red-400"
+      : "text-yellow-400";
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">

@@ -39,6 +39,19 @@ function getDb(): Database.Database {
       event_type TEXT NOT NULL,
       scopes TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS agent_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      risk_score INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      anomalies TEXT,
+      tools_used TEXT,
+      iteration_count INTEGER,
+      dismissed INTEGER DEFAULT 0
+    );
   `);
 
   return db;

@@ -2,6 +2,8 @@ export type AuditAction =
   | "FETCH_STRIPE"
   | "FETCH_PAYPAL"
   | "AI_ANALYSIS"
+  | "AGENT_ANALYSIS"
+  | "AGENT_MONITOR"
   | "REVOKE_TOKEN"
   | "STEP_UP_TRIGGERED"
   | "PERMISSION_VIEWED";
