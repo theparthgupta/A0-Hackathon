@@ -7,6 +7,17 @@ import { getMockPayPalTransactions } from "@/lib/paypal-mock";
 import type { RawTransaction } from "@/types/financial";
 import Stripe from "stripe";
 
+// Step-up auth: HIGH risk results require recent re-authentication
+// Uses Auth0's auth_time claim to verify the user re-authenticated within STEP_UP_WINDOW
+const STEP_UP_WINDOW_SECONDS = 300; // 5 minutes
+
+function hasRecentAuth(session: { user: Record<string, unknown> }): boolean {
+  const authTime = session.user.auth_time as number | undefined;
+  if (!authTime) return false;
+  const elapsed = Math.floor(Date.now() / 1000) - authTime;
+  return elapsed < STEP_UP_WINDOW_SECONDS;
+}
+
 export async function POST(request: Request) {
   const session = await auth0.getSession();
   if (!session) {
@@ -16,6 +27,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const query: string = body.query ?? "Analyze recent transactions";
   const sources: string[] = body.sources ?? ["stripe", "paypal"];
+  const stepUpConfirmed: boolean = body.stepUpConfirmed === true;
 
   // Check if local AI engine is available
   const aiAvailable = await checkAIHealth();
@@ -159,7 +171,71 @@ export async function POST(request: Request) {
   // Risk classification
   const risk = classifyRisk(sanitized, aiInsight.anomalies);
 
-  // Audit log
+  // ─── Step-Up Auth Gate ────────────────────────────────────
+  // HIGH risk results require recent re-authentication (max_age=0 in Auth0)
+  // This prevents an attacker with a stolen session from viewing sensitive findings
+  if (risk.level === "HIGH" && !hasRecentAuth(session)) {
+    if (!stepUpConfirmed) {
+      // Withhold detailed results — require step-up
+      auditLogger.log({
+        userId: session.user.sub,
+        action: "STEP_UP_TRIGGERED",
+        resource: sources.join(","),
+        outcome: "STEP_UP_REQUIRED",
+        query,
+        riskLevel: risk.level,
+        metadata: {
+          riskScore: risk.score,
+          reason: "HIGH risk analysis requires re-authentication",
+          authTime: session.user.auth_time,
+        },
+      });
+
+      return Response.json({
+        stepUpRequired: true,
+        risk: { level: risk.level, score: risk.score, reasons: [] },
+        message:
+          "This analysis detected HIGH risk patterns. Re-authenticate to view detailed findings.",
+        sanitizedStats: sanitized,
+        sources: {
+          stripe: stripeConnected ? "connected" : "not_connected",
+          paypal: "demo_mode",
+        },
+        aiAvailable,
+      });
+    }
+    // stepUpConfirmed=true but auth_time is stale — deny
+    auditLogger.log({
+      userId: session.user.sub,
+      action: "STEP_UP_TRIGGERED",
+      resource: sources.join(","),
+      outcome: "DENIED",
+      query,
+      riskLevel: risk.level,
+      metadata: {
+        riskScore: risk.score,
+        reason: "Step-up claimed but auth_time is stale",
+        authTime: session.user.auth_time,
+      },
+    });
+
+    return Response.json({
+      stepUpRequired: true,
+      risk: { level: risk.level, score: risk.score, reasons: [] },
+      message:
+        "Re-authentication expired. Please verify your identity again.",
+      sanitizedStats: sanitized,
+      sources: {
+        stripe: stripeConnected ? "connected" : "not_connected",
+        paypal: "demo_mode",
+      },
+      aiAvailable,
+    });
+  }
+
+  // ─── Audit + Return ──────────────────────────────────────
+  const wasStepUp = risk.level === "HIGH" && hasRecentAuth(session);
+
   auditLogger.log({
     userId: session.user.sub,
     action: "AI_ANALYSIS",
@@ -173,6 +249,7 @@ export async function POST(request: Request) {
       aiUsed: aiAvailable,
       stripeConnected,
       tokenSource: "auth0_token_vault",
+      stepUpVerified: wasStepUp,
     },
   });
 
@@ -186,5 +263,6 @@ export async function POST(request: Request) {
       paypal: "demo_mode",
     },
     aiAvailable,
+    stepUpVerified: wasStepUp,
   });
 }

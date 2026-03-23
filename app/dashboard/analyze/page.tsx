@@ -10,6 +10,14 @@ interface AnalysisResult {
   risk: RiskClassification;
   sources: { stripe: string; paypal: string };
   aiAvailable: boolean;
+  stepUpVerified?: boolean;
+}
+
+interface StepUpRequired {
+  stepUpRequired: true;
+  risk: { level: string; score: number };
+  message: string;
+  sanitizedStats: SanitizedDataPacket;
 }
 
 export default function AnalyzePage() {
@@ -17,12 +25,14 @@ export default function AnalyzePage() {
   const [sources, setSources] = useState({ stripe: true, paypal: true });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [stepUp, setStepUp] = useState<StepUpRequired | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function runAnalysis() {
+  async function runAnalysis(stepUpConfirmed = false) {
     setLoading(true);
     setError(null);
     setResult(null);
+    if (!stepUpConfirmed) setStepUp(null);
 
     try {
       const res = await fetch("/api/analyze", {
@@ -33,12 +43,15 @@ export default function AnalyzePage() {
           sources: Object.entries(sources)
             .filter(([, v]) => v)
             .map(([k]) => k),
+          stepUpConfirmed,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Analysis failed");
+      } else if (data.stepUpRequired) {
+        setStepUp(data as StepUpRequired);
       } else {
         setResult(data);
       }
@@ -47,6 +60,18 @@ export default function AnalyzePage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // After returning from Auth0 re-auth, auto-retry with stepUpConfirmed
+  // Check URL params for step-up return
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const isStepUpReturn = params?.get("stepUp") === "true";
+
+  // Auto-retry after step-up (only once)
+  const [autoRetried, setAutoRetried] = useState(false);
+  if (isStepUpReturn && !autoRetried && !loading && !result) {
+    setAutoRetried(true);
+    runAnalysis(true);
   }
 
   const riskColor = {
@@ -104,7 +129,7 @@ export default function AnalyzePage() {
         </div>
 
         <button
-          onClick={runAnalysis}
+          onClick={() => runAnalysis()}
           disabled={loading}
           className="bg-emerald-500 hover:bg-emerald-400 disabled:bg-emerald-500/40 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2"
         >
@@ -125,6 +150,51 @@ export default function AnalyzePage() {
         </div>
       )}
 
+      {/* Step-Up Auth Required */}
+      {stepUp && (
+        <div className="border-2 border-red-500/50 bg-red-500/5 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+              <span className="text-2xl">🔒</span>
+            </div>
+            <div>
+              <h2 className="font-bold text-red-400 text-lg">
+                Step-Up Authentication Required
+              </h2>
+              <p className="text-sm text-slate-400">
+                Risk Level: HIGH ({stepUp.risk.score}/100)
+              </p>
+            </div>
+          </div>
+
+          <p className="text-slate-300 text-sm">
+            {stepUp.message}
+          </p>
+
+          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-xs text-slate-500 space-y-1">
+            <p><strong className="text-slate-400">Why?</strong> HIGH risk findings contain sensitive security insights.
+              To prevent a stolen session from accessing these details, we require you to re-authenticate.</p>
+            <p><strong className="text-slate-400">How?</strong> Auth0 will prompt you to log in again (password + MFA if enabled).
+              This sets a fresh <code className="text-emerald-400">auth_time</code> claim that proves you just verified your identity.</p>
+          </div>
+
+          <div className="flex gap-3">
+            <a
+              href={`/api/step-up?returnTo=${encodeURIComponent("/dashboard/analyze?stepUp=true")}`}
+              className="bg-red-500 hover:bg-red-400 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+            >
+              🔐 Verify Identity & View Results
+            </a>
+            <button
+              onClick={() => setStepUp(null)}
+              className="border border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-lg transition-colors text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {result && (
         <div className="space-y-4">
           {/* Risk Classification */}
@@ -132,9 +202,16 @@ export default function AnalyzePage() {
             className={`border rounded-xl p-5 space-y-3 ${riskColor[result.risk.level]}`}
           >
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg">
-                Risk Level: {result.risk.level}
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 className="font-bold text-lg">
+                  Risk Level: {result.risk.level}
+                </h2>
+                {result.stepUpVerified && (
+                  <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
+                    🔐 Step-up verified
+                  </span>
+                )}
+              </div>
               <span className="text-sm opacity-70">Score: {result.risk.score}/100</span>
             </div>
             {result.risk.reasons.length > 0 && (

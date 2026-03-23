@@ -434,7 +434,7 @@ auditLogger.log({
 - [x] **Scoped Access** -- Read-only token, agent boundaries enforced
 - [x] **Security Architecture** -- Data sanitization, local processing, audit trail
 - [x] **Attack Scenario** -- Interactive demo with token exfiltration + revocation
-- [x] **Step-up Auth** -- Revocation requires authenticated session
+- [x] **Step-up Auth** -- HIGH risk results require re-authentication via Auth0 `max_age=0` (forces MFA/password). Fresh `auth_time` claim must be within 5 minutes to unlock detailed findings.
 - [x] **Audit Trail** -- Full event logging for compliance
 
 ---
